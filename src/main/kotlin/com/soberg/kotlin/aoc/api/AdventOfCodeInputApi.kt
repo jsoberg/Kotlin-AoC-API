@@ -14,39 +14,22 @@ import kotlin.io.path.writeLines
 
 object AdventOfCodeInputApi {
 
-    suspend fun readInputFromNetwork(
+    /** @return A [Result] indicating success or failure*/
+    suspend fun readInput(
         cachingStrategy: CachingStrategy,
         year: Int,
         day: Int,
         sessionToken: String,
-    ): Result<List<String>> {
+    ): Result<List<String>> = runCatching {
         // If cache exists, read from it and return immediately.
-        readFromCache(cachingStrategy, year, day)?.let { cachedLines ->
+        cachingStrategy.tryRead(year, day)?.let { cachedLines ->
             return Result.success(cachedLines)
         }
 
-        return runCatching {
-            tryReadInputFromNetwork(year, day, sessionToken)
-        }.onSuccess { lines ->
-            // Side effect, store in cache.
-            writeToCache(cachingStrategy, year, day, lines)
-        }
-    }
-
-    private fun readFromCache(
-        cachingStrategy: CachingStrategy,
-        year: Int,
-        day: Int,
-    ): List<String>? = when (cachingStrategy) {
-        CachingStrategy.None -> null
-        is CachingStrategy.LocalTextFile -> {
-            val path = Path(cachingStrategy.cacheDirPath, "$year", "$day.txt")
-            if (path.exists()) {
-                path.readLines()
-            } else {
-                null
-            }
-        }
+        tryReadInputFromNetwork(year, day, sessionToken)
+    }.onSuccess { lines ->
+        // Side effect, store in cache.
+        cachingStrategy.write(year, day, lines)
     }
 
     private suspend fun tryReadInputFromNetwork(
@@ -55,7 +38,7 @@ object AdventOfCodeInputApi {
         sessionToken: String,
     ): List<String> {
         val response: HttpResponse = AdventOfCodeKtorClient.create().use { client ->
-            readInputFromNetwork(client, year, day, sessionToken)
+            readInput(client, year, day, sessionToken)
         }
         if (response.status.value in 200..299) {
             return response.bodyAsText().lines()
@@ -64,7 +47,7 @@ object AdventOfCodeInputApi {
         }
     }
 
-    private suspend fun readInputFromNetwork(
+    private suspend fun readInput(
         client: HttpClient,
         year: Int,
         day: Int,
@@ -73,35 +56,55 @@ object AdventOfCodeInputApi {
         header("Cookie", "session=$sessionToken")
     }
 
-    private fun writeToCache(
-        cachingStrategy: CachingStrategy,
-        year: Int,
-        day: Int,
-        lines: List<String>,
-    ) {
-        when (cachingStrategy) {
-            is CachingStrategy.LocalTextFile -> {
-                val path = Path(cachingStrategy.cacheDirPath, "$year", "$day.txt")
+    sealed interface CachingStrategy {
+
+        /** @return Lines of text from this cache if it exists, null otherwise. */
+        fun tryRead(year: Int, day: Int): List<String>?
+
+        /** @return Attempts to write the provided [lines] to an output file, if applicable. */
+        fun write(year: Int, day: Int, lines: List<String>)
+
+        /** Don't try to cache this to a local file, instead just always read from network. */
+        data object None : CachingStrategy {
+            override fun tryRead(year: Int, day: Int): List<String>? = null
+
+            override fun write(year: Int, day: Int, lines: List<String>) {
+                /* Do nothing. */
+            }
+        }
+
+        /** Cache to a local text file from network on first read, then return from the local text file. */
+        data class LocalTextFile(
+            val cacheDirPath: String,
+        ) : CachingStrategy {
+            override fun tryRead(year: Int, day: Int): List<String>? {
+                val path = Path(cacheDirPath, "$year", "$day.txt")
+                return if (path.exists()) {
+                    path.readLines()
+                } else {
+                    null
+                }
+            }
+
+            override fun write(year: Int, day: Int, lines: List<String>) {
+                val path = Path(cacheDirPath, "$year", "$day.txt")
                 if (!path.exists()) {
                     Files.createDirectories(path.parent)
                     path.createFile()
                 }
                 path.writeLines(lines)
             }
+        }
 
-            CachingStrategy.None -> {
-                /* Do nothing. */
+        class Custom(
+            val tryRead: (year: Int, day: Int) -> List<String>?,
+            val write: (year: Int, day: Int, lines: List<String>) -> Unit,
+        ) : CachingStrategy {
+            override fun tryRead(year: Int, day: Int): List<String>? = tryRead(year, day)
+
+            override fun write(year: Int, day: Int, lines: List<String>) {
+                write(year, day, lines)
             }
         }
-    }
-
-    sealed interface CachingStrategy {
-        /** Don't try to cache this to a local file, instead just always read from network. */
-        data object None : CachingStrategy
-
-        /** Cache to a local text file from network on first read, then return from the local text file. */
-        data class LocalTextFile(
-            val cacheDirPath: String,
-        ) : CachingStrategy
     }
 }
