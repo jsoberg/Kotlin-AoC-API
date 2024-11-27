@@ -1,7 +1,7 @@
-# Kotlin-AoC-API
+# Kotlin Advent of Code API :santa:
 ![JitPack](https://img.shields.io/jitpack/version/com.github.jsoberg/Kotlin-AoC-API) [![](https://jitci.com/gh/jsoberg/Kotlin-AoC-API/svg)](https://jitci.com/gh/jsoberg/Kotlin-AoC-API)
 
-Simple Kotlin API for pulling input data for a specified year/day for :santa: [Advent of Code](https://adventofcode.com/) :christmas_tree: from network, and then caching if locally desired.
+Simple Kotlin API for pulling input data for a specified year/day for [Advent of Code](https://adventofcode.com/) from network, and then caching locally if desired.
 
 ## Setup
 
