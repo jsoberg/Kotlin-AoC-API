@@ -3,8 +3,8 @@ plugins {
     id("maven-publish")
 }
 
-group = "com.github.jsoberg"
-version = "0.1"
+group = Publishing.GroupId
+version = Publishing.Version
 
 repositories {
     mavenCentral()
@@ -25,4 +25,16 @@ dependencies {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            artifactId = Publishing.ArtifactId
+            groupId = Publishing.GroupId
+            version = Publishing.Version
+
+            from(components["java"])
+        }
+    }
 }
