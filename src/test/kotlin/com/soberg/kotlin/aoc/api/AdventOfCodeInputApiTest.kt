@@ -43,10 +43,10 @@ class AdventOfCodeInputApiTest {
         val api = AdventOfCodeInputApi(CachingStrategy.LocalTextFile(tempDir.absolutePathString()))
         setupMockHttpEngine()
 
-        assertThat(Path(tempDir.absolutePathString(), "2024", "23.txt").exists())
+        assertThat(Path(tempDir.absolutePathString(), "2024", "Day02.txt").exists())
             .isFalse()
-        api.readInput(2024, 23, "token")
-        assertThat(Path(tempDir.absolutePathString(), "2024", "23.txt"))
+        api.readInput(2024, 2, "token")
+        assertThat(Path(tempDir.absolutePathString(), "2024", "Day02.txt"))
             .exists()
     }
 

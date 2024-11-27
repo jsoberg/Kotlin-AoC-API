@@ -2,6 +2,7 @@ package com.soberg.kotlin.aoc.api
 
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
+import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
 import kotlin.io.path.Path
 import kotlin.io.path.createFile
@@ -12,6 +13,18 @@ import kotlin.io.path.writeLines
 class AdventOfCodeInputApi(
     private val cachingStrategy: CachingStrategy,
 ) {
+    /** Blocking (non-coroutine) version of [readInput]. */
+    fun blockingReadInput(
+        year: Int,
+        day: Int,
+        sessionToken: String,
+    ) = runBlocking {
+        readInput(
+            year = year,
+            day = day,
+            sessionToken = sessionToken,
+        )
+    }
 
     /** Attempts to read from cache based on the specified [cachingStrategy].
      * If no cache is read, this will read from network and attempt to store in cache.
@@ -49,9 +62,9 @@ class AdventOfCodeInputApi(
         )
         if (response.status.value in 200..299) {
             return response.bodyAsText()
+                // Trim to remove trailing next-line chars.
+                .trim()
                 .lines()
-                // Filter on non-blank lines to remove trailing next-line chars
-                .filter { line -> line.isNotBlank() }
         } else {
             error("Unexpected response code ${response.status.value}")
         }
@@ -78,9 +91,9 @@ class AdventOfCodeInputApi(
         data class LocalTextFile(
             val cacheDirPath: String,
         ) : CachingStrategy {
-            /** Attempts to read from a local cache file in the format <cacheDirPath>/year/day.txt */
+            /** Attempts to read from a local cache file in the format <cacheDirPath>/<year>/Day<day>.txt */
             override fun tryRead(year: Int, day: Int): List<String>? {
-                val path = Path(cacheDirPath, "$year", "$day.txt")
+                val path = Path(cacheDirPath, "$year", filenameForDay(day))
                 return if (path.exists()) {
                     path.readLines()
                 } else {
@@ -88,9 +101,11 @@ class AdventOfCodeInputApi(
                 }
             }
 
-            /** Attempts to write to a local cache file in the format <cacheDirPath>/year/day.txt */
+            private fun filenameForDay(day: Int) = "Day${"%02d".format(day)}.txt"
+
+            /** Attempts to write to a local cache file in the format <cacheDirPath>/<year>/Day<day>.txt */
             override fun write(year: Int, day: Int, lines: List<String>) {
-                val path = Path(cacheDirPath, "$year", "$day.txt")
+                val path = Path(cacheDirPath, "$year", filenameForDay(day))
                 if (!path.exists()) {
                     Files.createDirectories(path.parent)
                     path.createFile()
