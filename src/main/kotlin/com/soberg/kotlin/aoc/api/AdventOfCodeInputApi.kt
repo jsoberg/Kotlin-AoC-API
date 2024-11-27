@@ -1,8 +1,5 @@
 package com.soberg.kotlin.aoc.api
 
-import io.ktor.client.HttpClient
-import io.ktor.client.request.get
-import io.ktor.client.request.header
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import java.nio.file.Files
@@ -12,13 +9,21 @@ import kotlin.io.path.exists
 import kotlin.io.path.readLines
 import kotlin.io.path.writeLines
 
-object AdventOfCodeInputApi {
+class AdventOfCodeInputApi(
+    private val cachingStrategy: CachingStrategy,
+) {
 
-    /** @return A [Result] indicating success or failure*/
+    /** Attempts to read from cache based on the specified [cachingStrategy].
+     * If no cache is read, this will read from network and attempt to store in cache.
+     *
+     *  @return The read lines of input for the specified [year] and [day] if success, exception describing the error if failure.
+     */
     suspend fun readInput(
-        cachingStrategy: CachingStrategy,
+        /** The year of AoC input that should be read (e.g. 2024). */
         year: Int,
+        /** The day of AoC input that should be read (e.g. 1 for the first day of AoC). */
         day: Int,
+        /** The session token (grabbed from the Cookie header when logged into AoC online) to be used to grab your specific user input. */
         sessionToken: String,
     ): Result<List<String>> = runCatching {
         // If cache exists, read from it and return immediately.
@@ -37,23 +42,19 @@ object AdventOfCodeInputApi {
         day: Int,
         sessionToken: String,
     ): List<String> {
-        val response: HttpResponse = AdventOfCodeKtorClient.create().use { client ->
-            readInput(client, year, day, sessionToken)
-        }
+        val response: HttpResponse = AdventOfCodeHttpInputQuery.runQuery(
+            year = year,
+            day = day,
+            sessionToken = sessionToken,
+        )
         if (response.status.value in 200..299) {
-            return response.bodyAsText().lines()
+            return response.bodyAsText()
+                .lines()
+                // Filter on non-blank lines to remove trailing next-line chars
+                .filter { line -> line.isNotBlank() }
         } else {
             error("Unexpected response code ${response.status.value}")
         }
-    }
-
-    private suspend fun readInput(
-        client: HttpClient,
-        year: Int,
-        day: Int,
-        sessionToken: String,
-    ) = client.get("https://adventofcode.com/$year/day/$day/input") {
-        header("Cookie", "session=$sessionToken")
     }
 
     sealed interface CachingStrategy {
@@ -77,6 +78,7 @@ object AdventOfCodeInputApi {
         data class LocalTextFile(
             val cacheDirPath: String,
         ) : CachingStrategy {
+            /** Attempts to read from a local cache file in the format <cacheDirPath>/year/day.txt */
             override fun tryRead(year: Int, day: Int): List<String>? {
                 val path = Path(cacheDirPath, "$year", "$day.txt")
                 return if (path.exists()) {
@@ -86,6 +88,7 @@ object AdventOfCodeInputApi {
                 }
             }
 
+            /** Attempts to write to a local cache file in the format <cacheDirPath>/year/day.txt */
             override fun write(year: Int, day: Int, lines: List<String>) {
                 val path = Path(cacheDirPath, "$year", "$day.txt")
                 if (!path.exists()) {
@@ -97,13 +100,13 @@ object AdventOfCodeInputApi {
         }
 
         class Custom(
-            val tryRead: (year: Int, day: Int) -> List<String>?,
-            val write: (year: Int, day: Int, lines: List<String>) -> Unit,
+            private val tryReadBlock: (year: Int, day: Int) -> List<String>?,
+            private val writeBlock: (year: Int, day: Int, lines: List<String>) -> Unit,
         ) : CachingStrategy {
-            override fun tryRead(year: Int, day: Int): List<String>? = tryRead(year, day)
+            override fun tryRead(year: Int, day: Int): List<String>? = tryReadBlock(year, day)
 
             override fun write(year: Int, day: Int, lines: List<String>) {
-                write(year, day, lines)
+                writeBlock(year, day, lines)
             }
         }
     }
